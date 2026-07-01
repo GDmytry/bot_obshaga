@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+bot_data.db
+.git/
+.gitignore
+.dockerignore
+task.md
+implementation_plan.md
+*.tar
+*.bak

@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: smartdorm_db
+    environment:
+      POSTGRES_USER: shevel
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: smartdorm
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+
+  bot:
+    build: .
+    container_name: smartdorm_bot
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - DB_DSN=postgresql://shevel:secretpassword@db:5432/smartdorm
+      - ADMIN_IDS=${ADMIN_IDS}
+      - DEV_MODE=0
+      - PROXY_URL=socks5://vpn-client:20170
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - vpn-client
+    restart: unless-stopped
+
+  vpn-client:
+    image: mzz2017/v2raya
+    container_name: smartdorm_vpn
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "2017:2017"   # Web interface
+      - "20170:20170" # SOCKS proxy
+    environment:
+      - V2RAYA_LOG_FILE=/tmp/v2raya.log
+    volumes:
+      - /lib/modules:/lib/modules:ro
+      - /etc/resolv.conf:/etc/resolv.conf
+      - /etc/v2raya:/etc/v2raya
+
+volumes:
+  postgres_data:

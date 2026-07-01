@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Очереди</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            margin: 0;
+            padding: 16px;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .queue-card {
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .queue-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .member-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .member-item {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+            display: flex;
+            align-items: center;
+        }
+        .member-item:last-child {
+            border-bottom: none;
+        }
+        .current-marker {
+            margin-right: 8px;
+            color: var(--tg-theme-button-color, #3390ec);
+            font-weight: bold;
+        }
+        .empty-text {
+            color: var(--tg-theme-hint-color, #999999);
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Списки и Очереди</h1>
+    <div id="content">Загрузка...</div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        // Получаем chat_id из URL (для старых ссылок) или из start_param (для прямых ссылок)
+        const urlParams = new URLSearchParams(window.location.search);
+        let chatId = urlParams.get('chat_id');
+        
+        if (!chatId && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+            chatId = tg.initDataUnsafe.start_param;
+        }
+
+        async function fetchQueues() {
+            if (!chatId) {
+                document.getElementById('content').innerHTML = '<p class="empty-text">Ошибка: не найден chat_id. Запустите Mini App из группы.</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/queues?chat_id=${chatId}`);
+                const data = await response.json();
+                
+                const contentDiv = document.getElementById('content');
+                if (!data.queues || data.queues.length === 0) {
+                    contentDiv.innerHTML = '<p class="empty-text">В этом чате пока нет очередей. Создайте их командой /q</p>';
+                    return;
+                }
+
+                let html = '';
+                data.queues.forEach(q => {
+                    html += `<div class="queue-card">
+                        <div class="queue-title">📋 ${q.name}</div>`;
+                    
+                    if (q.members.length === 0) {
+                        html += `<div class="empty-text">Очередь пуста</div>`;
+                    } else {
+                        html += `<ul class="member-list">`;
+                        q.members.forEach((m, idx) => {
+                            if (m.is_done) {
+                                html += `<li class="member-item"><span class="current-marker">✅</span> ${idx + 1}. <strike>${m.name}</strike> <span class="empty-text" style="margin-left: 8px;">(${m.done_time})</span></li>`;
+                            } else {
+                                html += `<li class="member-item"><span class="current-marker">⏳</span> ${idx + 1}. ${m.name}</li>`;
+                            }
+                        });
+                        html += `</ul>`;
+                    }
+                    html += `</div>`;
+                });
+
+                contentDiv.innerHTML = html;
+            } catch (e) {
+                document.getElementById('content').innerHTML = '<p class="empty-text">Ошибка загрузки данных.</p>';
+            }
+        }
+
+        fetchQueues();
+    </script>
+</body>
+</html>

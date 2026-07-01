@@ -1,0 +1,162 @@
+import aiosqlite
+import logging
+from datetime import datetime
+
+DB_NAME = "bot_data.db"
+
+async def init_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS queues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                current_user_index INTEGER DEFAULT 0,
+                UNIQUE(chat_id, name)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS queue_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                queue_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                user_name TEXT NOT NULL,
+                order_index INTEGER NOT NULL,
+                is_done BOOLEAN DEFAULT 0,
+                done_time TEXT,
+                FOREIGN KEY (queue_id) REFERENCES queues (id) ON DELETE CASCADE,
+                UNIQUE(queue_id, user_id)
+            )
+        """)
+        
+        # Миграция: добавляем новые столбцы, если их нет
+        try:
+            await db.execute("ALTER TABLE queue_members ADD COLUMN is_done BOOLEAN DEFAULT 0")
+        except aiosqlite.OperationalError:
+            pass
+            
+        try:
+            await db.execute("ALTER TABLE queue_members ADD COLUMN done_time TEXT")
+        except aiosqlite.OperationalError:
+            pass
+            
+        await db.commit()
+        logging.info("Database initialized.")
+
+async def create_queue(chat_id: int, name: str) -> int:
+    async with aiosqlite.connect(DB_NAME) as db:
+        try:
+            cursor = await db.execute("INSERT INTO queues (chat_id, name) VALUES (?, ?)", (chat_id, name))
+            await db.commit()
+            return cursor.lastrowid
+        except aiosqlite.IntegrityError:
+            return None
+
+async def get_queue(chat_id: int, name: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT id, name, current_user_index FROM queues WHERE chat_id = ? AND name = ?", (chat_id, name))
+        return await cursor.fetchone()
+
+async def get_queue_by_id(queue_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT id, name, current_user_index, chat_id FROM queues WHERE id = ?", (queue_id,))
+        return await cursor.fetchone()
+
+async def get_all_queues(chat_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT id, name, current_user_index FROM queues WHERE chat_id = ?", (chat_id,))
+        return await cursor.fetchall()
+
+async def join_queue(queue_id: int, user_id: int, user_name: str) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT MAX(order_index) FROM queue_members WHERE queue_id = ?", (queue_id,))
+        row = await cursor.fetchone()
+        next_index = 0 if row[0] is None else row[0] + 1
+        
+        try:
+            await db.execute("INSERT INTO queue_members (queue_id, user_id, user_name, order_index) VALUES (?, ?, ?, ?)", 
+                             (queue_id, user_id, user_name, next_index))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+async def leave_queue(queue_id: int, user_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("DELETE FROM queue_members WHERE queue_id = ? AND user_id = ?", (queue_id, user_id))
+        await db.commit()
+        if cursor.rowcount > 0:
+            cursor = await db.execute("SELECT id FROM queue_members WHERE queue_id = ? ORDER BY order_index ASC", (queue_id,))
+            rows = await cursor.fetchall()
+            for new_index, (member_id,) in enumerate(rows):
+                await db.execute("UPDATE queue_members SET order_index = ? WHERE id = ?", (new_index, member_id))
+            
+            q_cursor = await db.execute("SELECT current_user_index FROM queues WHERE id = ?", (queue_id,))
+            q_row = await q_cursor.fetchone()
+            if q_row:
+                current_idx = q_row[0]
+                members_count = len(rows)
+                if members_count == 0:
+                    await db.execute("UPDATE queues SET current_user_index = 0 WHERE id = ?", (queue_id,))
+                elif current_idx >= members_count:
+                    await db.execute("UPDATE queues SET current_user_index = 0 WHERE id = ?", (queue_id,))
+            await db.commit()
+            return True
+        return False
+
+async def get_queue_members(queue_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT user_id, user_name, order_index, is_done, done_time FROM queue_members WHERE queue_id = ? ORDER BY order_index ASC", (queue_id,))
+        return await cursor.fetchall()
+
+async def mark_done(queue_id: int, user_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        # Проверяем, не отмечен ли он уже
+        cursor = await db.execute("SELECT is_done FROM queue_members WHERE queue_id = ? AND user_id = ?", (queue_id, user_id))
+        row = await cursor.fetchone()
+        if not row or row[0] == 1:
+            return False
+            
+        now_str = datetime.now().strftime("%H:%M")
+        await db.execute("UPDATE queue_members SET is_done = 1, done_time = ? WHERE queue_id = ? AND user_id = ?", (now_str, queue_id, user_id))
+        await db.commit()
+        return True
+
+async def unmark_done(queue_id: int, user_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        # Проверяем, отмечен ли он
+        cursor = await db.execute("SELECT is_done FROM queue_members WHERE queue_id = ? AND user_id = ?", (queue_id, user_id))
+        row = await cursor.fetchone()
+        if not row or row[0] == 0:
+            return False
+            
+        await db.execute("UPDATE queue_members SET is_done = 0, done_time = NULL WHERE queue_id = ? AND user_id = ?", (queue_id, user_id))
+        await db.commit()
+        return True
+
+async def next_turn(queue_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        members = await get_queue_members(queue_id)
+        if not members:
+            return None, None
+            
+        cursor = await db.execute("SELECT current_user_index FROM queues WHERE id = ?", (queue_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return None, None
+            
+        current_idx = row[0]
+        
+        # В случае, если индекс сбился
+        if current_idx >= len(members):
+             current_idx = 0
+             
+        prev_user_name = members[current_idx][1]
+        
+        new_idx = (current_idx + 1) % len(members)
+        new_user_name = members[new_idx][1]
+        
+        await db.execute("UPDATE queues SET current_user_index = ? WHERE id = ?", (new_idx, queue_id))
+        await db.commit()
+        
+        return prev_user_name, new_user_name

@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart-Общага 502 · Дашборд</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:         #0a0d14;
+    --surface:    #111827;
+    --card:       #1a2235;
+    --border:     #243049;
+    --accent:     #3b82f6;
+    --accent2:    #8b5cf6;
+    --green:      #22c55e;
+    --red:        #ef4444;
+    --yellow:     #f59e0b;
+    --text:       #f1f5f9;
+    --muted:      #64748b;
+    --glow:       0 0 20px rgba(59,130,246,.25);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── AMBIENT BACKGROUND ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 10%, rgba(59,130,246,.12) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 80% 80%, rgba(139,92,246,.10) 0%, transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .page { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px;
+    background: rgba(26,34,53,.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 16px; margin-bottom: 28px;
+    box-shadow: var(--glow);
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon { font-size: 28px; }
+  .logo h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; }
+  .logo h1 span { color: var(--accent); }
+  .clock { font-size: 13px; color: var(--muted); font-feature-settings: 'tnum'; }
+  #live-time { font-size: 20px; font-weight: 600; color: var(--text); display: block; text-align: right; }
+
+  /* ── TOP STATS BAR ── */
+  .stats-bar {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px; margin-bottom: 28px;
+  }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px 22px;
+    display: flex; align-items: center; gap: 14px;
+    transition: transform .2s, border-color .2s;
+  }
+  .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .stat-icon { font-size: 28px; }
+  .stat-info { flex: 1; }
+  .stat-value { font-size: 26px; font-weight: 800; line-height: 1; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .stat-card.green  .stat-value { color: var(--green); }
+  .stat-card.blue   .stat-value { color: var(--accent); }
+  .stat-card.yellow .stat-value { color: var(--yellow); }
+  .stat-card.red    .stat-value { color: var(--red); }
+
+  /* ── VPN STATUS PILL ── */
+  .vpn-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 100px;
+    font-size: 13px; font-weight: 600;
+    transition: all .3s;
+  }
+  .vpn-pill.on  { background: rgba(34,197,94,.15);  border: 1px solid rgba(34,197,94,.4);  color: var(--green); }
+  .vpn-pill.off { background: rgba(239,68,68,.12);  border: 1px solid rgba(239,68,68,.35); color: var(--red); }
+  .vpn-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .vpn-pill.on  .vpn-dot { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.5s infinite; }
+  .vpn-pill.off .vpn-dot { background: var(--red); }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+  /* ── GRID LAYOUT ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media(max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .grid-full { grid-column: 1 / -1; }
+
+  /* ── SECTION CARDS ── */
+  .section {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 18px; padding: 22px 24px;
+    transition: border-color .3s;
+  }
+  .section:hover { border-color: rgba(59,130,246,.4); }
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .section-title {
+    font-size: 15px; font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .badge {
+    font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 100px; background: rgba(59,130,246,.2);
+    color: var(--accent); border: 1px solid rgba(59,130,246,.3);
+  }
+
+  /* ── RESIDENT LIST ── */
+  .resident-list { display: flex; flex-direction: column; gap: 10px; }
+  .resident {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 12px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid transparent;
+    transition: all .2s;
+  }
+  .resident:hover { background: rgba(255,255,255,.06); border-color: var(--border); }
+  .resident.home  { border-left: 3px solid var(--green); }
+  .resident.away  { border-left: 3px solid var(--muted); opacity: .65; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; flex-shrink: 0;
+  }
+  .avatar.home { background: rgba(34,197,94,.2); color: var(--green); }
+  .avatar.away { background: rgba(100,116,139,.2); color: var(--muted); }
+  .resident-info { flex: 1; min-width: 0; }
+  .resident-name { font-size: 14px; font-weight: 600; }
+  .resident-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .status-dot.home { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .status-dot.away { background: var(--muted); }
+
+  /* ── DEBT TABLE ── */
+  .debt-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 14px; border-radius: 10px;
+    background: rgba(239,68,68,.05); border: 1px solid rgba(239,68,68,.15);
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .debt-arrow { color: var(--muted); margin: 0 8px; }
+  .debt-amount { font-weight: 700; color: var(--yellow); font-size: 14px; }
+  .debt-names { flex: 1; }
+
+  /* ── EXPENSE LIST ── */
+  .expense-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .expense-item:last-child { border-bottom: none; }
+  .expense-icon { font-size: 18px; }
+  .expense-info { flex: 1; }
+  .expense-desc { font-weight: 500; }
+  .expense-meta { font-size: 11px; color: var(--muted); }
+  .expense-amt  { font-weight: 700; color: var(--accent); }
+
+  /* ── WARN / RESTRICTION ── */
+  .warn-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: 10px;
+    background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.2);
+    margin-bottom: 8px; font-size: 13px;
+  }
+  .warn-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .warn-info .name { font-weight: 600; }
+  .warn-info .reason { color: var(--muted); margin-top: 2px; }
+
+  .restriction-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: 10px;
+    background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25);
+    margin-bottom: 8px; font-size: 13px;
+  }
+  .restriction-icon { font-size: 16px; flex-shrink: 0; }
+  .restriction-info .name { font-weight: 600; }
+  .restriction-info .expires { color: var(--muted); margin-top: 2px; }
+
+  /* ── EMPTY STATE ── */
+  .empty {
+    text-align: center; padding: 30px 0; color: var(--muted);
+    font-size: 13px;
+  }
+  .empty-icon { font-size: 32px; margin-bottom: 8px; }
+
+  /* ── LOADING SKELETON ── */
+  .skeleton {
+    border-radius: 8px; background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
+    background-size: 200% 100%; animation: shimmer 1.5s infinite;
+    height: 44px; margin-bottom: 8px;
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <span class="logo-icon">🏠</span>
+      <h1>Smart-<span>Общага</span> 502</h1>
+    </div>
+    <div class="clock">
+      <span id="live-time">--:--:--</span>
+      Обновление через <span id="countdown">60</span>с
+    </div>
+  </header>
+
+  <!-- Stats Bar -->
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat-card green">
+      <span class="stat-icon">🏠</span>
+      <div class="stat-info">
+        <div class="stat-value" id="stat-home">—</div>
+        <div class="stat-label">Дома сейчас</div>
+      </div>
+    </div>
+    <div class="stat-card blue">
+      <span class="stat-icon">👥</span>
+      <div class="stat-info">
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-label">Всего жильцов</div>
+      </div>
+    </div>
+    <div class="stat-card yellow">
+      <span class="stat-icon">💸</span>
+      <div class="stat-info">
+        <div class="stat-value" id="stat-debts">—</div>
+        <div class="stat-label">Активных долгов</div>
+      </div>
+    </div>
+    <div class="stat-card red">
+      <span class="stat-icon">⚠️</span>
+      <div class="stat-info">
+        <div class="stat-value" id="stat-warns">—</div>
+        <div class="stat-label">Предупреждений</div>
+      </div>
+    </div>
+    <div class="stat-card" style="grid-column: span 1;">
+      <span class="stat-icon">🌐</span>
+      <div class="stat-info">
+        <div id="vpn-status" class="vpn-pill off">
+          <span class="vpn-dot"></span> Загрузка…
+        </div>
+        <div class="stat-label" style="margin-top:6px;">Режим сети</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Grid -->
+  <div class="grid">
+
+    <!-- Residents -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">🏠 Кто в хате</div>
+        <span class="badge" id="badge-home">0 / 0</span>
+      </div>
+      <div class="resident-list" id="resident-list">
+        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+    </div>
+
+    <!-- Debts -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">💰 Долги (Общак)</div>
+        <span class="badge" id="badge-debts">0 долгов</span>
+      </div>
+      <div id="debt-list">
+        <div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+    </div>
+
+    <!-- Recent Expenses -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">🧾 Последние покупки</div>
+      </div>
+      <div id="expense-list">
+        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+    </div>
+
+    <!-- Discipline Board -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">🚨 Доска позора</div>
+        <span class="badge" id="badge-warns">0 варнов</span>
+      </div>
+      <div id="warn-list">
+        <div class="skeleton"></div>
+      </div>
+      <div style="margin-top:14px; padding-top:14px; border-top: 1px solid var(--border);">
+        <div class="section-title" style="font-size:13px; margin-bottom:10px;">🔒 Ограничения</div>
+        <div id="restriction-list">
+          <div class="skeleton"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /grid -->
+</div><!-- /page -->
+
+<script>
+  // ── Clock ──────────────────────────────────────────────────────────────
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('live-time').textContent =
+      now.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ── Countdown & Auto-refresh ───────────────────────────────────────────
+  let countdown = 60;
+  const cdEl = document.getElementById('countdown');
+  setInterval(() => {
+    countdown--;
+    cdEl.textContent = countdown;
+    if (countdown <= 0) { countdown = 60; loadAll(); }
+  }, 1000);
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  function initials(name) {
+    return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+  }
+  function timeAgo(isoString) {
+    if (!isoString) return 'давно';
+    const diff = Math.floor((Date.now() - new Date(isoString)) / 60000);
+    if (diff < 1)  return 'только что';
+    if (diff < 60) return `${diff} мин назад`;
+    return `${Math.floor(diff/60)} ч назад`;
+  }
+
+  // ── Load all data ─────────────────────────────────────────────────────
+  async function loadAll() {
+    await Promise.all([loadStatus(), loadFinance(), loadDiscipline()]);
+  }
+
+  async function loadStatus() {
+    try {
+      const data = await fetch('/api/status').then(r => r.json());
+
+      // Stats bar
+      document.getElementById('stat-home').textContent  = data.home_count;
+      document.getElementById('stat-total').textContent = data.residents.length;
+      document.getElementById('badge-home').textContent = `${data.home_count} / ${data.residents.length}`;
+
+      // VPN
+      const vpnEl = document.getElementById('vpn-status');
+      vpnEl.className = `vpn-pill ${data.vpn_enabled ? 'on' : 'off'}`;
+      vpnEl.innerHTML = `<span class="vpn-dot"></span> ${data.vpn_enabled ? 'VPN включён' : 'Обычный режим'}`;
+
+      // Residents
+      const listEl = document.getElementById('resident-list');
+      if (!data.residents.length) {
+        listEl.innerHTML = '<div class="empty"><div class="empty-icon">👤</div>Нет зарегистрированных жильцов</div>';
+        return;
+      }
+      // Sort: home first
+      const sorted = [...data.residents].sort((a,b) => (b.status==='home') - (a.status==='home'));
+      listEl.innerHTML = sorted.map(r => `
+        <div class="resident ${r.status}">
+          <div class="avatar ${r.status}">${initials(r.name)}</div>
+          <div class="resident-info">
+            <div class="resident-name">${r.name}</div>
+            <div class="resident-meta">${r.status === 'home' ? '🏠 Дома' : `🚪 Ушёл · ${timeAgo(r.last_seen)}`}</div>
+          </div>
+          <div class="status-dot ${r.status}"></div>
+        </div>
+      `).join('');
+    } catch(e) {
+      document.getElementById('resident-list').innerHTML = '<div class="empty">⚠️ Ошибка загрузки</div>';
+    }
+  }
+
+  async function loadFinance() {
+    try {
+      const data = await fetch('/api/finance').then(r => r.json());
+
+      document.getElementById('stat-debts').textContent = data.debts.length;
+      document.getElementById('badge-debts').textContent = `${data.debts.length} долгов`;
+
+      // Debts
+      const debtEl = document.getElementById('debt-list');
+      if (!data.debts.length) {
+        debtEl.innerHTML = '<div class="empty"><div class="empty-icon">💚</div>Все долги погашены!</div>';
+      } else {
+        debtEl.innerHTML = data.debts.map(d => `
+          <div class="debt-item">
+            <div class="debt-names">
+              <b>${d.debtor}</b>
+              <span class="debt-arrow">→</span>
+              <b>${d.creditor}</b>
+            </div>
+            <span class="debt-amount">${d.amount.toFixed(2)} ₽</span>
+          </div>
+        `).join('');
+      }
+
+      // Expenses
+      const expEl = document.getElementById('expense-list');
+      if (!data.expenses.length) {
+        expEl.innerHTML = '<div class="empty"><div class="empty-icon">🛒</div>Покупок пока нет</div>';
+      } else {
+        expEl.innerHTML = data.expenses.map(e => `
+          <div class="expense-item">
+            <span class="expense-icon">🛍️</span>
+            <div class="expense-info">
+              <div class="expense-desc">${e.description}</div>
+              <div class="expense-meta">${e.payer} · ${e.date}</div>
+            </div>
+            <span class="expense-amt">${e.amount.toFixed(2)} ₽</span>
+          </div>
+        `).join('');
+      }
+    } catch(e) {
+      document.getElementById('debt-list').innerHTML = '<div class="empty">⚠️ Ошибка</div>';
+    }
+  }
+
+  async function loadDiscipline() {
+    try {
+      const data = await fetch('/api/discipline').then(r => r.json());
+
+      document.getElementById('stat-warns').textContent = data.warnings.length;
+      document.getElementById('badge-warns').textContent = `${data.warnings.length} варнов`;
+
+      // Warnings
+      const warnEl = document.getElementById('warn-list');
+      if (!data.warnings.length) {
+        warnEl.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div>Нарушений нет!</div>';
+      } else {
+        warnEl.innerHTML = data.warnings.map(w => `
+          <div class="warn-item">
+            <span class="warn-icon">⚠️</span>
+            <div class="warn-info">
+              <div class="name">${w.user}</div>
+              <div class="reason">${w.reason} · <i>${w.date}</i></div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Restrictions
+      const restEl = document.getElementById('restriction-list');
+      if (!data.restrictions.length) {
+        restEl.innerHTML = '<div class="empty" style="padding:12px 0">Ограничений нет ✅</div>';
+      } else {
+        restEl.innerHTML = data.restrictions.map(r => `
+          <div class="restriction-item">
+            <span class="restriction-icon">${r.type==='block' ? '🔴' : '🟠'}</span>
+            <div class="restriction-info">
+              <div class="name">${r.user} · <b>${r.type === 'block' ? 'Заблокирован' : '64 кбит/с'}</b></div>
+              <div class="expires">${r.reason} · до ${r.expires_at}</div>
+            </div>
+          </div>
+        `).join('');
+      }
+    } catch(e) {
+      document.getElementById('warn-list').innerHTML = '<div class="empty">⚠️ Ошибка</div>';
+    }
+  }
+
+  // ── Initial load ──────────────────────────────────────────────────────
+  loadAll();
+</script>
+</body>
+</html>

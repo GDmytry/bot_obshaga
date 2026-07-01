@@ -1,0 +1,173 @@
+import os
+import logging
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from dotenv import load_dotenv
+
+import database as db
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBAPP_URL = os.getenv("WEBAPP_URL")
+MINI_APP_LINK = os.getenv("MINI_APP_LINK")
+
+if WEBAPP_URL and not WEBAPP_URL.startswith("https://"):
+    raise ValueError(f"❌ ОШИБКА: WEBAPP_URL должен начинаться с 'https://'! Вы указали: {WEBAPP_URL}")
+
+if not BOT_TOKEN or BOT_TOKEN == "your_bot_token_here":
+    raise ValueError("❌ ОШИБКА: Токен бота не найден! Откройте файл .env и вставьте туда ваш BOT_TOKEN.")
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+def get_queue_keyboard(queue_id: int, chat_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Присоединиться ➕", callback_data=f"join_{queue_id}")
+    builder.button(text="Покинуть ➖", callback_data=f"leave_{queue_id}")
+    builder.button(text="Отметиться ✅", callback_data=f"done_{queue_id}")
+    builder.button(text="Сбросить 🔄", callback_data=f"undone_{queue_id}")
+    if MINI_APP_LINK:
+        # Direct links allow opening Mini Apps in group chats via standard URL buttons
+        builder.button(text="Открыть Mini App 📱", url=f"{MINI_APP_LINK}?startapp={chat_id}")
+    elif WEBAPP_URL and chat_id > 0:
+        # Fallback to web_app for private chats if no direct link is provided
+        builder.button(text="Открыть Mini App 📱", web_app=WebAppInfo(url=f"{WEBAPP_URL}?chat_id={chat_id}"))
+    builder.adjust(2, 1, 1)
+    return builder.as_markup()
+
+async def format_queue_text(queue_id: int, queue_name: str) -> str:
+    members = await db.get_queue_members(queue_id)
+    
+    text = f"📋 **Список: {queue_name}**\n\n"
+    if not members:
+        text += "Список пуст. Нажмите кнопку ниже, чтобы присоединиться!"
+    else:
+        for idx, (user_id, user_name, order_index, is_done, done_time) in enumerate(members):
+            if is_done:
+                text += f"{idx + 1}. ✅ {user_name} ({done_time})\n"
+            else:
+                text += f"{idx + 1}. ⏳ {user_name}\n"
+            
+    return text
+
+@dp.message(Command("start", "help"))
+async def cmd_start(message: types.Message):
+    await message.answer(
+        "Привет! Я бот для управления очередями.\n"
+        "Команды:\n"
+        "/q <название> — создать или открыть очередь.\n"
+        "Например: `/q Уборка`"
+    )
+
+@dp.message(Command("q"))
+async def cmd_q(message: types.Message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Пожалуйста, укажите название очереди. Например: `/q Уборка`")
+        return
+        
+    queue_name = args[1].strip()
+    chat_id = message.chat.id
+    
+    # Try to find existing
+    queue = await db.get_queue(chat_id, queue_name)
+    if not queue:
+        # Create new
+        queue_id = await db.create_queue(chat_id, queue_name)
+        if not queue_id:
+            await message.answer("Произошла ошибка при создании очереди.")
+            return
+    else:
+        queue_id = queue[0]
+        
+    text = await format_queue_text(queue_id, queue_name)
+    markup = get_queue_keyboard(queue_id, chat_id)
+    
+    await message.answer(text, reply_markup=markup, parse_mode="Markdown")
+
+@dp.callback_query(F.data.startswith("join_"))
+async def cb_join(callback: types.CallbackQuery):
+    queue_id = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
+    user_name = callback.from_user.full_name or callback.from_user.username or "Без имени"
+    
+    success = await db.join_queue(queue_id, user_id, user_name)
+    if success:
+        queue = await db.get_queue_by_id(queue_id)
+        if queue:
+            chat_id = queue[3]
+            text = await format_queue_text(queue_id, queue[1])
+            await callback.message.edit_text(text, reply_markup=get_queue_keyboard(queue_id, chat_id), parse_mode="Markdown")
+        await callback.answer("Вы добавлены в очередь!")
+    else:
+        await callback.answer("Вы уже в этой очереди!", show_alert=True)
+
+@dp.callback_query(F.data.startswith("leave_"))
+async def cb_leave(callback: types.CallbackQuery):
+    queue_id = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
+    
+    success = await db.leave_queue(queue_id, user_id)
+    if success:
+        queue = await db.get_queue_by_id(queue_id)
+        if queue:
+            chat_id = queue[3]
+            text = await format_queue_text(queue_id, queue[1])
+            await callback.message.edit_text(text, reply_markup=get_queue_keyboard(queue_id, chat_id), parse_mode="Markdown")
+        await callback.answer("Вы покинули очередь!")
+    else:
+        await callback.answer("Вас нет в этой очереди!", show_alert=True)
+
+@dp.callback_query(F.data.startswith("done_"))
+async def cb_done(callback: types.CallbackQuery):
+    queue_id = int(callback.data.split("_")[1])
+    
+    queue = await db.get_queue_by_id(queue_id)
+    if not queue:
+        await callback.answer("Очередь не найдена.")
+        return
+        
+    members = await db.get_queue_members(queue_id)
+    if not members:
+         await callback.answer("Очередь пуста!")
+         return
+         
+    user_id = callback.from_user.id
+    
+    success = await db.mark_done(queue_id, user_id)
+    
+    if success:
+        actor_name = callback.from_user.full_name or callback.from_user.username or "Кто-то"
+        notice = f"✅ **{actor_name}** отметил(а) выполнение задачи '{queue[1]}'."
+        await callback.message.answer(notice, parse_mode="Markdown")
+        
+        # Update original message
+        chat_id = queue[3]
+        text = await format_queue_text(queue_id, queue[1])
+        await callback.message.edit_text(text, reply_markup=get_queue_keyboard(queue_id, chat_id), parse_mode="Markdown")
+        await callback.answer("Отмечено!")
+    else:
+        await callback.answer("Ошибка: вы не в списке или уже отметились.", show_alert=True)
+
+@dp.callback_query(F.data.startswith("undone_"))
+async def cb_undone(callback: types.CallbackQuery):
+    queue_id = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
+    
+    queue = await db.get_queue_by_id(queue_id)
+    if not queue:
+        await callback.answer("Список не найден.")
+        return
+        
+    success = await db.unmark_done(queue_id, user_id)
+    
+    if success:
+        chat_id = queue[3]
+        text = await format_queue_text(queue_id, queue[1])
+        await callback.message.edit_text(text, reply_markup=get_queue_keyboard(queue_id, chat_id), parse_mode="Markdown")
+        await callback.answer("Отметка снята!")
+    else:
+        await callback.answer("Ошибка: вас нет в списке или вы еще не отмечались.", show_alert=True)
