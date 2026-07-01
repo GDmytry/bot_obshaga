@@ -19,7 +19,11 @@ services:
     container_name: smartdorm_bot
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
-      - DB_DSN=postgresql://shevel:secretpassword@db:5432/smartdorm
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=db
+      - DB_PORT=5432
       - ADMIN_IDS=${ADMIN_IDS}
       - DEV_MODE=0
       - PROXY_URL=socks5://vpn-client:20170
