@@ -26,7 +26,6 @@ services:
       - DB_PORT=5432
       - ADMIN_IDS=${ADMIN_IDS}
       - DEV_MODE=0
-      - PROXY_URL=socks5://vpn-client:20170
     ports:
       - "8000:8000"
     depends_on:
@@ -49,19 +48,7 @@ services:
       - /etc/resolv.conf:/etc/resolv.conf
       - /etc/v2raya:/etc/v2raya
 
-  ngrok:
-    image: ngrok/ngrok:latest
-    container_name: smartdorm_ngrok
-    environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command:
-      - "http"
-      # Используем ваш постоянный домен (переменная NGROK_DOMAIN из .env)
-      - "--url=${NGROK_DOMAIN}"
-      - "bot:8000"
-    restart: unless-stopped
-    depends_on:
-      - bot
+
 
 volumes:
   postgres_data:
