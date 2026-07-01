@@ -45,5 +45,19 @@ services:
       - /etc/resolv.conf:/etc/resolv.conf
       - /etc/v2raya:/etc/v2raya
 
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: smartdorm_ngrok
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command:
+      - "http"
+      # Используем ваш постоянный домен (переменная NGROK_DOMAIN из .env)
+      - "--domain=${NGROK_DOMAIN}"
+      - "bot:8000"
+    restart: unless-stopped
+    depends_on:
+      - bot
+
 volumes:
   postgres_data:

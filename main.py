@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uvicorn
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, MenuButtonWebApp, WebAppInfo
 from aiogram.client.session.aiohttp import AiohttpSession
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -55,6 +55,14 @@ async def register_commands(bot: Bot) -> None:
 
     # Set for all users globally
     await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+
+    if config.WEBAPP_URL:
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="Дашборд 📱",
+                web_app=WebAppInfo(url=config.WEBAPP_URL)
+            )
+        )
 
     # Override per admin — show extended list in their private chat
     for admin_id in config.ADMIN_IDS:

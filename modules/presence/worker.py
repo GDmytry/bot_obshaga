@@ -29,6 +29,7 @@ from database.models.discipline import get_active_restriction
 logger = logging.getLogger(__name__)
 
 # Will be injected by main.py after bot is created
+_router_is_down = False
 _bot = None
 
 
@@ -78,24 +79,37 @@ async def presence_check_job() -> None:
     Fetches active MACs from the router, updates user statuses,
     and notifies admins on connection changes.
     """
+    global _router_is_down
     logger.info("[PresenceWorker] Running presence check…")
     try:
         # Run blocking SSH call in a thread pool
         loop = asyncio.get_event_loop()
         active_macs: list[str] = await loop.run_in_executor(None, _ssh_get_macs)
         logger.info(f"[PresenceWorker] Detected MACs: {active_macs}")
+        
+        if _router_is_down:
+            _router_is_down = False
+            if _bot and ADMIN_IDS:
+                for admin_id in ADMIN_IDS:
+                    try:
+                        await _bot.send_message(admin_id, "✅ <b>Роутер снова доступен!</b>\nСвязь восстановлена.", parse_mode="HTML")
+                    except Exception:
+                        pass
+
     except Exception as exc:
         logger.warning(f"[PresenceWorker] Router unreachable: {exc}")
-        if _bot and ADMIN_IDS:
-            for admin_id in ADMIN_IDS:
-                try:
-                    await _bot.send_message(
-                        admin_id,
-                        f"⚠️ <b>Роутер недоступен!</b>\nМодуль «Большой Брат» не смог подключиться по SSH.\n<code>{exc}</code>",
-                        parse_mode="HTML",
-                    )
-                except Exception:
-                    pass
+        if not _router_is_down:
+            _router_is_down = True
+            if _bot and ADMIN_IDS:
+                for admin_id in ADMIN_IDS:
+                    try:
+                        await _bot.send_message(
+                            admin_id,
+                            f"⚠️ <b>Роутер недоступен!</b>\nМодуль «Большой Брат» не смог подключиться по SSH.\n<code>{exc}</code>",
+                            parse_mode="HTML",
+                        )
+                    except Exception:
+                        pass
         return
 
     # Get all users and their MACs
