@@ -53,7 +53,7 @@ services:
     command:
       - "http"
       # Используем ваш постоянный домен (переменная NGROK_DOMAIN из .env)
-      - "--domain=${NGROK_DOMAIN}"
+      - "--url=${NGROK_DOMAIN}"
       - "bot:8000"
     restart: unless-stopped
     depends_on:
