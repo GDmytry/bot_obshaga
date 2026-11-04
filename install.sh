@@ -24,7 +24,15 @@ fi
 # 2. Обновление пакетов и установка зависимостей
 echo -e "\n${YELLOW}[1/4] Обновление пакетов и установка Docker...${NC}"
 sudo apt-get update
-sudo apt-get install -y curl git docker.io docker-compose-plugin
+sudo apt-get install -y curl git
+
+# Установка Docker и Compose (в Debian Bookworm пакет называется docker-compose-v2)
+echo -e "${YELLOW}Установка Docker и Docker Compose...${NC}"
+if ! sudo apt-get install -y docker.io docker-compose-v2; then
+    if ! sudo apt-get install -y docker.io docker-compose-plugin; then
+        sudo apt-get install -y docker.io docker-compose
+    fi
+fi
 
 # 3. Настройка и запуск Docker службы
 echo -e "\n${YELLOW}[2/4] Запуск и автозагрузка службы Docker...${NC}"

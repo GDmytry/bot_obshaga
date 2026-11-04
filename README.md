@@ -101,7 +101,7 @@ cd bot_obshaga
 bash install.sh
 ```
 Скрипт автоматически:
-1. Установит `docker.io`, `docker-compose-plugin`, `git`.
+1. Установит `docker.io`, `docker-compose-v2` (или compose-плагин), `git`.
 2. Включит автозагрузку Docker.
 3. Создаст файл `.env` из шаблона `.env.example`.
 4. Выведет локальный IP-адрес вашего сервера в сети.

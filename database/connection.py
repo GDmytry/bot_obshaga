@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,9 +19,18 @@ async def create_pool():
 
     import asyncpg
     from config import DB_DSN
-    _pool = await asyncpg.create_pool(dsn=DB_DSN, min_size=2, max_size=10)
-    logger.info("✅ PostgreSQL connection pool created.")
-    return _pool
+
+    max_attempts = 30
+    for attempt in range(1, max_attempts + 1):
+        try:
+            _pool = await asyncpg.create_pool(dsn=DB_DSN, min_size=2, max_size=10)
+            logger.info("✅ PostgreSQL connection pool created.")
+            return _pool
+        except Exception as exc:
+            logger.info(f"⏳ Ожидание готовности PostgreSQL (попытка {attempt}/{max_attempts}): {exc}")
+            await asyncio.sleep(2)
+
+    raise RuntimeError(f"❌ Не удалось подключиться к PostgreSQL после {max_attempts} попыток.")
 
 
 async def close_pool() -> None:
