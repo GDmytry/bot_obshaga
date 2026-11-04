@@ -5,32 +5,37 @@ services:
     image: postgres:15-alpine
     container_name: smartdorm_db
     environment:
-      POSTGRES_USER: shevel
-      POSTGRES_PASSWORD: secretpassword
-      POSTGRES_DB: smartdorm
+      POSTGRES_USER: ${DB_USER:-smartdorm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-smartdorm_super_secret_password}
+      POSTGRES_DB: ${DB_NAME:-smartdorm}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   bot:
     build: .
     container_name: smartdorm_bot
+    env_file:
+      - .env
     environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
       - DB_HOST=db
       - DB_PORT=5432
-      - ADMIN_IDS=${ADMIN_IDS}
+      - DB_USER=${DB_USER:-smartdorm}
+      - DB_PASSWORD=${DB_PASSWORD:-smartdorm_super_secret_password}
+      - DB_NAME=${DB_NAME:-smartdorm}
       - DEV_MODE=0
     ports:
       - "8000:8000"
     depends_on:
-      - db
-      - vpn-client
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   vpn-client:
@@ -48,7 +53,28 @@ services:
       - /etc/resolv.conf:/etc/resolv.conf
       - /etc/v2raya:/etc/v2raya
 
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: smartdorm_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
 
+  grafana:
+    image: grafana/grafana:10.0.3
+    container_name: smartdorm_grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:

@@ -15,7 +15,6 @@ from bot.handlers import common, queues, finance, vpn, discipline
 from bot.middlewares.admin_check import AdminMiddleware
 
 # Module workers/schedulers
-from modules.presence import worker as presence_worker
 from modules.discipline import enforcer
 from modules.finance import scheduler as finance_scheduler
 
@@ -35,9 +34,8 @@ async def register_commands(bot: Bot) -> None:
     # Commands for all users
     user_commands = [
         BotCommand(command="start",    description="🏟️ Главное меню и справка"),
-        BotCommand(command="status",   description="📡 Кто дома и статус VPN"),
+        BotCommand(command="status",   description="📡 Жильцы и статус VPN"),
         BotCommand(command="register", description="👤 Зарегистрироваться в системе"),
-        BotCommand(command="addmac",   description="📱 Добавить MAC-адрес устройства"),
         BotCommand(command="buy",      description="🛒 /buy 600 Пельмени — добавить расход в общак"),
         BotCommand(command="balance",  description="📊 Матрица долгов"),
         BotCommand(command="q",        description="📋 /q Уборка — создать/открыть список"),
@@ -78,8 +76,27 @@ async def register_commands(bot: Bot) -> None:
 
 
 async def start_bot(bot: Bot, dp: Dispatcher) -> None:
-    await bot.delete_webhook(drop_pending_updates=True)
-    await register_commands(bot)
+    """
+    Connect to Telegram with retry loop.
+    Prevents crash-looping if proxy/VPN is still initializing.
+    """
+    retry_delay = 5
+    while True:
+        try:
+            logger.info("⏳ Подключение к Telegram API...")
+            me = await bot.get_me()
+            logger.info(f"✅ Успешное подключение к Telegram! Бот: @{me.username} (ID: {me.id})")
+            await bot.delete_webhook(drop_pending_updates=True)
+            await register_commands(bot)
+            break
+        except Exception as exc:
+            logger.warning(
+                f"⚠️ Не удалось подключиться к Telegram API: {exc}. "
+                f"Повтор через {retry_delay} сек. "
+                "(Если сервер в РФ — убедитесь, что v2rayA или прокси настроен и запущен)."
+            )
+            await asyncio.sleep(retry_delay)
+
     await dp.start_polling(bot)
 
 
@@ -97,9 +114,30 @@ async def main() -> None:
 
     # ── Bot setup ─────────────────────────────────────────────
     if config.PROXY_URL:
-        session = AiohttpSession(proxy=config.PROXY_URL)
+        if config.PROXY_URL.startswith("socks"):
+            from aiohttp_socks import ProxyConnector
+
+            class SocksAiohttpSession(AiohttpSession):
+                def __init__(self, proxy_url: str, **kwargs):
+                    super().__init__(**kwargs)
+                    self._proxy_url = proxy_url
+
+                async def create_session(self):
+                    if self._session is None or self._session.closed:
+                        from aiohttp import ClientSession
+                        connector = ProxyConnector.from_url(self._proxy_url)
+                        self._session = ClientSession(
+                            connector=connector,
+                            json_serialize=self.json_dumps,
+                        )
+                    return self._session
+
+            session = SocksAiohttpSession(proxy_url=config.PROXY_URL)
+        else:
+            session = AiohttpSession(proxy=config.PROXY_URL)
+
         bot = Bot(token=config.BOT_TOKEN, session=session)
-        logger.info(f"Bot starting with proxy: {config.PROXY_URL}")
+        logger.info(f"Bot configured with proxy: {config.PROXY_URL}")
     else:
         bot = Bot(token=config.BOT_TOKEN)
 
@@ -113,20 +151,11 @@ async def main() -> None:
     dp.include_router(vpn.router)
     dp.include_router(discipline.router)
 
-    presence_worker.set_bot(bot)
     enforcer.set_bot(bot)
     finance_scheduler.set_bot(bot)
 
     # ── Scheduler ─────────────────────────────────────────────
     scheduler = AsyncIOScheduler()
-
-    # Presence check every 2 minutes
-    scheduler.add_job(
-        presence_worker.presence_check_job,
-        trigger="interval",
-        minutes=2,
-        id="presence_check",
-    )
 
     # Auto-lift expired restrictions every 5 minutes
     scheduler.add_job(

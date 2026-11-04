@@ -8,10 +8,32 @@ Usage: set DEV_MODE=1 in .env, or run with:
 """
 import aiosqlite
 import logging
+import re
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 DB_FILE = "bot_data_dev.db"
+
+
+def _pg2sqlite(sql: str, args: tuple) -> tuple[str, list]:
+    """
+    Convert numbered PostgreSQL placeholders ($1, $2, ...) to positional SQLite placeholders (?),
+    reordering and duplicating arguments as needed.
+    """
+    param_matches = list(re.finditer(r'\$(\d+)', sql))
+    if not param_matches:
+        return sql, list(args)
+
+    reordered_args = []
+    for match in param_matches:
+        idx = int(match.group(1)) - 1
+        if 0 <= idx < len(args):
+            reordered_args.append(args[idx])
+        else:
+            raise IndexError(f"Placeholder ${match.group(1)} out of bounds for args of length {len(args)}")
+
+    new_sql = re.sub(r'\$\d+', '?', sql)
+    return new_sql, reordered_args
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -23,6 +45,7 @@ class Row(dict):
         if isinstance(key, int):
             return list(self.values())[key]
         return super().__getitem__(key)
+
     def __getattr__(self, key):
         try:
             return self[key]
@@ -31,34 +54,30 @@ class Row(dict):
 
 
 async def fetchrow(conn, sql: str, *args) -> Row | None:
-    sql = _pg2sqlite(sql)
-    cursor = await conn.execute(sql, args)
+    sql, sqlite_args = _pg2sqlite(sql, args)
+    cursor = await conn.execute(sql, sqlite_args)
     row = await cursor.fetchone()
-    if row is None:
+    if row is None or cursor.description is None:
         return None
     cols = [d[0] for d in cursor.description]
     return Row(zip(cols, row))
 
 
 async def fetch(conn, sql: str, *args) -> list[Row]:
-    sql = _pg2sqlite(sql)
-    cursor = await conn.execute(sql, args)
+    sql, sqlite_args = _pg2sqlite(sql, args)
+    cursor = await conn.execute(sql, sqlite_args)
     rows = await cursor.fetchall()
+    if not rows or cursor.description is None:
+        return []
     cols = [d[0] for d in cursor.description]
     return [Row(zip(cols, r)) for r in rows]
 
 
 async def execute(conn, sql: str, *args) -> str:
-    sql = _pg2sqlite(sql)
-    cursor = await conn.execute(sql, args)
+    sql, sqlite_args = _pg2sqlite(sql, args)
+    cursor = await conn.execute(sql, sqlite_args)
     await conn.commit()
     return f"OK {cursor.rowcount}"
-
-
-def _pg2sqlite(sql: str) -> str:
-    """Convert $1,$2... placeholders to ? for SQLite."""
-    import re
-    return re.sub(r'\$\d+', '?', sql)
 
 
 # ────────────────────────────────────────────────────────────────────────────

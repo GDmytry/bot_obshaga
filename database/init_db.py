@@ -33,7 +33,7 @@ async def _init_sqlite(pool) -> None:
             user_id INTEGER NOT NULL,
             user_name TEXT NOT NULL,
             order_index INTEGER NOT NULL,
-            is_done INTEGER DEFAULT 0,
+            is_done BOOLEAN DEFAULT FALSE,
             done_time TEXT,
             UNIQUE(queue_id, user_id)
         )""",
@@ -42,10 +42,7 @@ async def _init_sqlite(pool) -> None:
             telegram_id INTEGER UNIQUE NOT NULL,
             username TEXT,
             full_name TEXT NOT NULL,
-            mac_addresses TEXT DEFAULT '',
-            status TEXT DEFAULT 'away',
-            last_seen TEXT,
-            is_active INTEGER DEFAULT 1,
+            is_active BOOLEAN DEFAULT TRUE,
             registered_at TEXT DEFAULT (datetime('now'))
         )""",
         """CREATE TABLE IF NOT EXISTS expenses (
@@ -67,7 +64,7 @@ async def _init_sqlite(pool) -> None:
             reason TEXT NOT NULL,
             issued_by INTEGER NOT NULL,
             created_at TEXT DEFAULT (datetime('now')),
-            is_active INTEGER DEFAULT 1
+            is_active BOOLEAN DEFAULT TRUE
         )""",
         """CREATE TABLE IF NOT EXISTS restrictions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,13 +75,7 @@ async def _init_sqlite(pool) -> None:
             created_at TEXT DEFAULT (datetime('now')),
             expires_at TEXT,
             lifted_at TEXT,
-            is_active INTEGER DEFAULT 1
-        )""",
-        """CREATE TABLE IF NOT EXISTS presence_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            event TEXT NOT NULL,
-            logged_at TEXT DEFAULT (datetime('now'))
+            is_active BOOLEAN DEFAULT TRUE
         )""",
     ]
     for stmt in stmts:
@@ -123,9 +114,6 @@ async def _init_postgres(pool) -> None:
                 telegram_id     BIGINT UNIQUE NOT NULL,
                 username        TEXT,
                 full_name       TEXT NOT NULL,
-                mac_addresses   TEXT DEFAULT '',
-                status          TEXT DEFAULT 'away',
-                last_seen       TIMESTAMPTZ,
                 is_active       BOOLEAN DEFAULT TRUE,
                 registered_at   TIMESTAMPTZ DEFAULT NOW()
             )
@@ -168,14 +156,6 @@ async def _init_postgres(pool) -> None:
                 expires_at  TIMESTAMPTZ,
                 lifted_at   TIMESTAMPTZ,
                 is_active   BOOLEAN DEFAULT TRUE
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS presence_log (
-                id          SERIAL PRIMARY KEY,
-                user_id     BIGINT NOT NULL REFERENCES users(telegram_id),
-                event       TEXT NOT NULL,
-                logged_at   TIMESTAMPTZ DEFAULT NOW()
             )
         """)
     logger.info("✅ PostgreSQL tables initialized.")

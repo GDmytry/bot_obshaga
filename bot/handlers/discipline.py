@@ -1,17 +1,31 @@
+from datetime import datetime
 from aiogram import Router, types
 from aiogram.filters import Command
 
-from config import ADMIN_IDS
+from config import ADMIN_IDS, WARN_LIMIT, RESTRICTION_HOURS
 from database.models import users as user_db
 from database.models.discipline import get_warn_count, get_active_restriction
 from modules.discipline.enforcer import handle_warn, handle_unwarn
-from config import WARN_LIMIT, RESTRICTION_HOURS
 
 router = Router()
 
 
 def _require_admin(message: types.Message) -> bool:
     return message.from_user.id in ADMIN_IDS
+
+
+def _format_date(dt, fmt: str = "%d.%m %H:%M") -> str:
+    if dt is None:
+        return "—"
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace(" ", "T"))
+        except ValueError:
+            return dt[:16]
+    try:
+        return dt.strftime(fmt)
+    except Exception:
+        return str(dt)
 
 
 @router.message(Command("warn"))
@@ -143,13 +157,13 @@ async def cmd_warns(message: types.Message):
         await message.answer(f"✅ У <b>{target['full_name']}</b> нет предупреждений.", parse_mode="HTML")
         return
 
-    lines = [f"{i+1}. {w['reason']} (<i>{w['created_at'].strftime('%d.%m %H:%M')}</i>)" for i, w in enumerate(warns)]
+    lines = [f"{i+1}. {w['reason']} (<i>{_format_date(w['created_at'])}</i>)" for i, w in enumerate(warns)]
     text = (
         f"⚠️ <b>Предупреждения: {target['full_name']}</b>\n\n"
         + "\n".join(lines)
     )
     if restriction:
-        expires = restriction["expires_at"].strftime("%d.%m %H:%M")
+        expires = _format_date(restriction["expires_at"])
         text += f"\n\n🚫 <b>Интернет ограничен</b> до {expires}"
 
     await message.answer(text, parse_mode="HTML")

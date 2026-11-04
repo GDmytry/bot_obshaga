@@ -61,7 +61,7 @@
 
   /* ── TOP STATS BAR ── */
   .stats-bar {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 16px; margin-bottom: 28px;
   }
   .stat-card {
@@ -131,26 +131,19 @@
     padding: 12px 14px; border-radius: 12px;
     background: rgba(255,255,255,.03);
     border: 1px solid transparent;
+    border-left: 3px solid var(--accent);
     transition: all .2s;
   }
   .resident:hover { background: rgba(255,255,255,.06); border-color: var(--border); }
-  .resident.home  { border-left: 3px solid var(--green); }
-  .resident.away  { border-left: 3px solid var(--muted); opacity: .65; }
   .avatar {
     width: 36px; height: 36px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 16px; font-weight: 700; flex-shrink: 0;
+    background: rgba(59,130,246,.2); color: var(--accent);
   }
-  .avatar.home { background: rgba(34,197,94,.2); color: var(--green); }
-  .avatar.away { background: rgba(100,116,139,.2); color: var(--muted); }
   .resident-info { flex: 1; min-width: 0; }
   .resident-name { font-size: 14px; font-weight: 600; }
   .resident-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .status-dot {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-  }
-  .status-dot.home { background: var(--green); box-shadow: 0 0 8px var(--green); }
-  .status-dot.away { background: var(--muted); }
 
   /* ── DEBT TABLE ── */
   .debt-item {
@@ -236,18 +229,11 @@
 
   <!-- Stats Bar -->
   <div class="stats-bar" id="stats-bar">
-    <div class="stat-card green">
-      <span class="stat-icon">🏠</span>
-      <div class="stat-info">
-        <div class="stat-value" id="stat-home">—</div>
-        <div class="stat-label">Дома сейчас</div>
-      </div>
-    </div>
     <div class="stat-card blue">
       <span class="stat-icon">👥</span>
       <div class="stat-info">
         <div class="stat-value" id="stat-total">—</div>
-        <div class="stat-label">Всего жильцов</div>
+        <div class="stat-label">Жильцов в системе</div>
       </div>
     </div>
     <div class="stat-card yellow">
@@ -264,7 +250,7 @@
         <div class="stat-label">Предупреждений</div>
       </div>
     </div>
-    <div class="stat-card" style="grid-column: span 1;">
+    <div class="stat-card">
       <span class="stat-icon">🌐</span>
       <div class="stat-info">
         <div id="vpn-status" class="vpn-pill off">
@@ -281,8 +267,8 @@
     <!-- Residents -->
     <div class="section">
       <div class="section-header">
-        <div class="section-title">🏠 Кто в хате</div>
-        <span class="badge" id="badge-home">0 / 0</span>
+        <div class="section-title">👥 Жильцы комнаты 502</div>
+        <span class="badge" id="badge-residents">0 жильцов</span>
       </div>
       <div class="resident-list" id="resident-list">
         <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
@@ -351,14 +337,8 @@
 
   // ── Helpers ───────────────────────────────────────────────────────────
   function initials(name) {
+    if (!name) return '??';
     return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
-  }
-  function timeAgo(isoString) {
-    if (!isoString) return 'давно';
-    const diff = Math.floor((Date.now() - new Date(isoString)) / 60000);
-    if (diff < 1)  return 'только что';
-    if (diff < 60) return `${diff} мин назад`;
-    return `${Math.floor(diff/60)} ч назад`;
   }
 
   // ── Load all data ─────────────────────────────────────────────────────
@@ -369,11 +349,11 @@
   async function loadStatus() {
     try {
       const data = await fetch('/api/status').then(r => r.json());
+      const total = data.total_residents !== undefined ? data.total_residents : data.residents.length;
 
       // Stats bar
-      document.getElementById('stat-home').textContent  = data.home_count;
-      document.getElementById('stat-total').textContent = data.residents.length;
-      document.getElementById('badge-home').textContent = `${data.home_count} / ${data.residents.length}`;
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('badge-residents').textContent = `${total} жильцов`;
 
       // VPN
       const vpnEl = document.getElementById('vpn-status');
@@ -386,16 +366,13 @@
         listEl.innerHTML = '<div class="empty"><div class="empty-icon">👤</div>Нет зарегистрированных жильцов</div>';
         return;
       }
-      // Sort: home first
-      const sorted = [...data.residents].sort((a,b) => (b.status==='home') - (a.status==='home'));
-      listEl.innerHTML = sorted.map(r => `
-        <div class="resident ${r.status}">
-          <div class="avatar ${r.status}">${initials(r.name)}</div>
+      listEl.innerHTML = data.residents.map(r => `
+        <div class="resident">
+          <div class="avatar">${initials(r.name)}</div>
           <div class="resident-info">
             <div class="resident-name">${r.name}</div>
-            <div class="resident-meta">${r.status === 'home' ? '🏠 Дома' : `🚪 Ушёл · ${timeAgo(r.last_seen)}`}</div>
+            <div class="resident-meta">${r.username ? '@' + r.username : 'Зарегистрирован'}</div>
           </div>
-          <div class="status-dot ${r.status}"></div>
         </div>
       `).join('');
     } catch(e) {

@@ -17,15 +17,19 @@ app = FastAPI(title="Smart-Общага 502 API")
 
 
 def fmt_dt(value, fmt: str = "%d.%m %H:%M") -> str:
-    """Format a date that may be a datetime object (postgres) or ISO string (sqlite dev mode)."""
+    """Format a date that may be a datetime object (postgres) or string (sqlite dev mode)."""
     if value is None:
         return "—"
     if isinstance(value, str):
         try:
-            value = datetime.fromisoformat(value)
+            value = datetime.fromisoformat(value.replace(" ", "T"))
         except ValueError:
-            return value
-    return value.strftime(fmt)
+            return value[:16]
+    try:
+        return value.strftime(fmt)
+    except Exception:
+        return str(value)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,12 +46,24 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 
+@app.get("/queues", response_class=HTMLResponse)
+async def queues_page(request: Request):
+    """Mini App view for queues."""
+    return templates.TemplateResponse(request=request, name="index.html")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
+    """
+    Main dashboard page.
+    If opened as Telegram WebApp with ?chat_id=..., serves the queue view.
+    """
+    if "chat_id" in request.query_params:
+        return templates.TemplateResponse(request=request, name="index.html")
     return templates.TemplateResponse(request=request, name="dashboard.html")
 
 
-# ── Presence ──────────────────────────────────────────────────────────────
+# ── Status ────────────────────────────────────────────────────────────────
 
 @app.get("/api/status")
 async def api_status():
@@ -56,15 +72,14 @@ async def api_status():
         {
             "id": u["telegram_id"],
             "name": u["full_name"],
-            "status": u["status"],
-            "last_seen": u["last_seen"].isoformat() if u["last_seen"] else None,
+            "username": u["username"],
         }
         for u in all_users
     ]
     return {
         "residents": residents,
         "vpn_enabled": get_vpn_status(),
-        "home_count": sum(1 for r in residents if r["status"] == "home"),
+        "total_residents": len(residents),
     }
 
 
@@ -145,7 +160,7 @@ async def api_queues(chat_id: int):
                     "id": m["user_id"],
                     "name": m["user_name"],
                     "order": m["order_index"],
-                    "is_done": m["is_done"],
+                    "is_done": bool(m["is_done"]),
                     "done_time": m["done_time"],
                 }
                 for m in members

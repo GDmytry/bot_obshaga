@@ -91,11 +91,11 @@ async def mark_done(queue_id: int, user_id: int) -> bool:
             "SELECT is_done FROM queue_members WHERE queue_id=$1 AND user_id=$2",
             queue_id, user_id
         )
-        if not row or row["is_done"]:
+        if not row or bool(row["is_done"]):
             return False
         now_str = datetime.now().strftime("%H:%M")
         await conn.execute(
-            "UPDATE queue_members SET is_done=1, done_time=$1 WHERE queue_id=$2 AND user_id=$3",
+            "UPDATE queue_members SET is_done=TRUE, done_time=$1 WHERE queue_id=$2 AND user_id=$3",
             now_str, queue_id, user_id
         )
         return True
@@ -107,10 +107,10 @@ async def unmark_done(queue_id: int, user_id: int) -> bool:
             "SELECT is_done FROM queue_members WHERE queue_id=$1 AND user_id=$2",
             queue_id, user_id
         )
-        if not row or not row["is_done"]:
+        if not row or not bool(row["is_done"]):
             return False
         await conn.execute(
-            "UPDATE queue_members SET is_done=0, done_time=NULL WHERE queue_id=$1 AND user_id=$2",
+            "UPDATE queue_members SET is_done=FALSE, done_time=NULL WHERE queue_id=$1 AND user_id=$2",
             queue_id, user_id
         )
         return True
