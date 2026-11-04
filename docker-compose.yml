@@ -24,10 +24,14 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:-smartdorm_super_secret_password}
       - DB_NAME=${DB_NAME:-smartdorm}
       - DEV_MODE=0
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     ports:
       - "8000:8000"
     depends_on:
       - db
+      - vpn-client
     restart: unless-stopped
 
   vpn-client:
@@ -35,6 +39,9 @@ services:
     container_name: smartdorm_vpn
     restart: unless-stopped
     privileged: true
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     ports:
       - "2017:2017"   # Web-интерфейс v2rayA
       - "20170:20170" # SOCKS5 прокси
@@ -42,8 +49,6 @@ services:
     environment:
       - V2RAYA_LOG_FILE=/tmp/v2raya.log
     volumes:
-      - /lib/modules:/lib/modules:ro
-      - /etc/resolv.conf:/etc/resolv.conf
       - /etc/v2raya:/etc/v2raya
 
   prometheus:
